@@ -4,7 +4,8 @@
 
 ## About 
 
-AudioHit is a CLI utility written in Rust and designed to trim and fade audio samples (specially single hits such as drum hits and bass notes).
+AudioHit is a CLI utility written in Rust and designed to trim and fade audio samples (specially single hits such as drum hits and bass notes).  
+The app detects the start and end points of the main content of the audio sample based on amplitude (whatever is above a certain threshold), trims the audio file to those start / end points, and apply a linear fade in/out.
 
 ## Limitations
 
