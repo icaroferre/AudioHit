@@ -12,7 +12,7 @@ AudioHit is a CLI utility written in Rust and designed to trim and fade audio sa
 
 ## How to Install
 
-If you're running **macOS**, download the ZIP of this repo and copy the audiohit binary file from the ```code/target/debug``` folder to your ```/usr/bin``` folder.
+If you're running **macOS**, download the [ZIP of this repo](https://github.com/icaroferre/AudioHit/archive/master.zip) and copy the audiohit binary file from the ```code/target/debug``` folder to your ```/usr/bin``` folder.
 If you're running other OS, you'll need to install the latest version of Rust + Cargo and compile the code for your own system (cd into the folder and ```cargo build```).
 
 ## How to Use
