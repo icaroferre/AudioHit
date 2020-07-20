@@ -15,16 +15,16 @@ The generated samples can also be concatenated into a single .wav file a .ot sli
 
 ## How to Install
 
-If you're running **macOS**, download the [ZIP of this repo](https://github.com/icaroferre/AudioHit/archive/master.zip) and copy the audiohit binary file from the ```code/target/release``` folder to your ```/usr/bin``` folder.
+If you're running **macOS**, [download the latest release version](https://github.com/icaroferre/AudioHit/releases/download/0.2.0/audiohit.0.2.0.for.macOS.zip). To use it, ```cd``` into the folder and use the ```./audiohit``` command
 If you're running other OS, you'll need to install the latest version of Rust + Cargo and compile the code for your own system (cd into the folder and ```cargo build --release```).
 
 ## How to Use
 
-To use AudioHit, open the terminal and use the ```audiohit``` command to process files or folder.
+To use AudioHit, open the terminal and use the ```./audiohit``` command to process files or folder.
 
-To process a single file, use the command ```audiohit --file name_of_file.wav```.
+To process a single file, use the command ```./audiohit --file name_of_file.wav```.
 
-To batch process an entire folder, use the command ```audiohit --folder /path/to/folder```.
+To batch process an entire folder, use the command ```./audiohit --folder /path/to/folder```.
  
 The new files will placed inside an output folder (which will be created if it doesn't exist).
 
