@@ -74,8 +74,7 @@ fn main() {
         ap.parse_args_or_exit();
     }
 
-    let test_num : u32 = 124 * 6; 
-    println!("{:?}", test_num.to_le_bytes());
+
     println!(" ");
     println!("AUDIOHIT - DEVELOPED BY ICARO FERRE");
     println!("Version {}", versionnumber);

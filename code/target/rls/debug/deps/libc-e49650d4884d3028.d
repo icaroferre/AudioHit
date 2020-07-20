@@ -1,0 +1,11 @@
+/Users/icaroferre/Dropbox/Work/GitHub/AudioHit/code/target/rls/debug/deps/libc-e49650d4884d3028.rmeta: /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/lib.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/macros.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/dox.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/b64.rs
+
+/Users/icaroferre/Dropbox/Work/GitHub/AudioHit/code/target/rls/debug/deps/libc-e49650d4884d3028.d: /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/lib.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/macros.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/dox.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/mod.rs /Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/b64.rs
+
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/lib.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/macros.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/dox.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/mod.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/mod.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/mod.rs:
+/Users/icaroferre/.cargo/registry/src/github.com-1ecc6299db9ec823/libc-0.2.40/src/unix/bsd/apple/b64.rs:
