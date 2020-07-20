@@ -1,8 +1,0 @@
-error[E0658]: 128-bit integers are not stable (see issue #35118)
- --> <anon>:1:13
-  |
-1 | fn main() { 0i128; }
-  |             ^^^^^
-
-error: aborting due to previous error
-

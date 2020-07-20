@@ -1,10 +1,12 @@
 [package]
 name = "audiohit"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Icaro Ferre"]
 
+
 [dependencies]
-hound = "3.4.0"
-decibel = "0.1.2"
-argparse = "0.2.1"
-stopwatch = "0.0.7"
+ot_utils = {github = "https://github.com/icaroferre/ot_utils", version = "0.1.0" }
+decibel = {github = "https://github.com/Digipom/decibel", version="0.1.2"}
+hound = {github = "https://github.com/ruuda/hound/", version="3.4.0"}
+argparse = {github = "http://github.com/tailhook/rust-argparse", version="0.2.1"}
+stopwatch = {github = "https://github.com/ellisonch/rust-stopwatch", version="0.0.7"}
