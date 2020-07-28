@@ -4,7 +4,6 @@
 
 
 use std::path::Path;
-// use std::env;
 use std::fs;
 use decibel::{AmplitudeRatio, DecibelRatio};
 use argparse::{ArgumentParser, Store};
@@ -34,14 +33,14 @@ fn stof(s:&str) -> f32 {
 
 fn main() {
 	//Version number
-    let versionnumber = "0.2.0";
+    let versionnumber = "0.3";
 
     // Set default preset
     let  default = getpreset(0);
     
     // Start timer
     let sw = Stopwatch::start_new();
-    getpreset(1);
+
     // Initialize variables
 	let mut filename = "0".to_string();
     let mut folder_path = "0".to_string();
@@ -81,7 +80,7 @@ fn main() {
     println!(" ");
 
 
-    let mut processed_files:i16 = 0;
+    let mut processed_files:u16 = 0;
 
     let mut OT_Slicer = Slicer::new();
 
@@ -112,37 +111,18 @@ fn main() {
             // Validate directory
             if check_file.is_dir() {
 
-                // Get list of files
-                let paths = fs::read_dir(&folder_path).unwrap();
 
-                OT_Slicer.output_folder = folder_path.clone();
+                // Check for sub folders and process subfolders first
+                let extra_folders = find_sub_folders(&folder_path);
 
-                OT_Slicer.output_filename = check_file.file_name().unwrap().to_str().unwrap().to_string();
-
-
-                for path in paths {
-                    // Get file info (path, name, and extension)
-                    let file_path = path.unwrap().path();
-                    let file_name = &file_path.file_name();
-                    let file_ext = match &file_path.extension(){
-                        &Some(x) => x.to_str().unwrap(),
-                        &None => " "
-                    };
-
-                    // Process WAV files
-                    if file_ext == "wav" {
-                        processed_files += 1;
-                        match *file_name {
-                            Some(_x) => {
-                                let new_file = process(&file_path.to_str().unwrap().to_string(), &fade_in_ms, &fade_out_ms, &thresh_db);
-                                if ot_file == "true" {
-                                    OT_Slicer.add_file(new_file).unwrap();
-                                }
-                            },
-                            None => println!("Error")
-                        }; 
-                    } 
+                for folder in extra_folders {
+                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db);
                 }
+
+                // Process files found in main folder
+                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db);
+
+                
             }
             else {
                 println!("ERROR: Folder not found: {:?}", check_file);
@@ -154,9 +134,7 @@ fn main() {
     println!("Total time lapsed: {}ms", sw.elapsed_ms());
     println!(" ");
 
-    if ot_file == "true" {
-        OT_Slicer.generate_ot_file().unwrap();
-    }
+    
     
 }
 
@@ -317,9 +295,7 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
 	        	// In between
                 _ => samples[index]
 	        };
-	        // println!("{} / {}: {}", i, new_file_dur, amplitude);
             writer.write_sample(amplitude as i16).unwrap();
-            // final_array.push(amplitude as i16);
     	}
     	
     }
@@ -330,14 +306,11 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
 
     writer.finalize().unwrap();
 
-    // let new_file_path: &Path = new_filename.;
     new_filename
-    // final_array
 
 }
 
 fn createdir(dir:String) -> String {
-
     match fs::create_dir(&dir) {
         Err(e) => {println!("{:?}", e)},
         _ => {}
@@ -345,8 +318,138 @@ fn createdir(dir:String) -> String {
     dir
 } 
 
+fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, fade_in_ms: &String, fade_out_ms: &String, thresh_db: &String) -> u16 {
+    let check_file: &Path = &folder_path.as_ref();
+    let mut processed_files : u16 = 0;
+    // Validate directory
+    if check_file.is_dir() {
+
+        // Get list of files  
+        let mut new_paths: Vec<_> = fs::read_dir(&folder_path).unwrap()
+                                        .map(|r| r.unwrap())
+                                        .collect();
+        new_paths.sort_by_key(|dir| dir.path());
+
+        let mut valid_files : Vec<std::path::PathBuf> = Vec::new();
+
+
+        for path in new_paths {
+            // Get file info (path, name, and extension)
+            let file_path = path.path();
+            let file_name = &file_path.file_name();
+            let file_ext = match &file_path.extension(){
+                &Some(x) => x.to_str().unwrap(),
+                &None => " "
+            };
+
+
+            // Find WAV files and add to valid_files vector
+            if file_ext == "wav" {
+                match *file_name {
+                    Some(_x) => {
+                        valid_files.push(file_path);
+                        processed_files += 1;
+                    },
+                    None => println!("Error")
+                };
+            } 
+        }
+
+        println!("Valid files found: {}", valid_files.len());
+
+
+        // Because the Octatrack OT files can only support up to 64 files we need to batch process files in groups of 64 files or less
+        // While 64 should be the theoretical max, we must do 32 at the time so the OT checksum doesn't overflow
+
+        let octatrack_max_files = 64;
+        let num_octa_files = ((valid_files.len() as f64 / octatrack_max_files as f64) as f64).ceil() as isize;
+        println!("Number of Octatrack OT files: {}", num_octa_files);
+
+        for i in 0..num_octa_files {
+  
+            // Reset the slice vector
+            OT_Slicer.clear();
+
+            // Create output folder
+            let mut output_folder = folder_path.clone();
+            output_folder.push_str("/output/");
+            output_folder = createdir(output_folder);
+            OT_Slicer.output_folder = output_folder;
+            
+
+            // Set OT file to the same name as the folder
+            OT_Slicer.output_filename = check_file.file_name().unwrap().to_str().unwrap().to_string();
+
+            // Add suffix to OT file if num_octa_files is greater than 0
+            let mut max_files : usize = valid_files.len();
+
+            if num_octa_files > 1 {
+                let suffix = format!("_{}", i + 1);
+                OT_Slicer.output_filename.push_str(suffix.as_str());
+                max_files = octatrack_max_files;
+            }
+    
+            for file in 0..max_files {
+                let file_pos = file + (i * max_files as isize) as usize;
+                if file_pos < valid_files.len() {
+                    let file =  &valid_files[file_pos];
+                    println!("Processing file {}: {}", file_pos, file.display());
+                    match ot_file.as_str() {
+                        "true" => {
+                            let new_file = process(&file.to_str().unwrap().to_string(), fade_in_ms, fade_out_ms, thresh_db);
+                            OT_Slicer.add_file(new_file).unwrap();
+                        },
+                        "only" => {
+                            OT_Slicer.add_file(file.to_str().unwrap().to_string()).unwrap();
+                        }
+                        _ => {
+                            let _ = process(&file.to_str().unwrap().to_string(), fade_in_ms, fade_out_ms, thresh_db);
+                        }
+                    }
+                }
+            }
+
+
+            if ot_file == "true" || ot_file == "only" {
+                OT_Slicer.generate_ot_file().unwrap();
+            }
+
+        }
+
+        processed_files = valid_files.len() as u16;
+    }
+    processed_files
+}
+
+
+/// Look for folders inside a folder and returns a vector of paths as strings
+fn find_sub_folders (folder_path: &String) -> Vec<String> {
+    let check_file: &Path = &folder_path.as_ref();
+    let mut valid_files : Vec<String> = Vec::new();
+
+    // Validate directory
+    if check_file.is_dir() {
+        let mut files_found: Vec<_> = fs::read_dir(&folder_path).unwrap()
+                                        .map(|r| r.unwrap())
+                                        .collect();
+        files_found.sort_by_key(|dir| dir.path());
+
+        
+
+        for file in files_found {
+            if file.path().is_dir() {
+                valid_files.push(file.path().to_str().unwrap().to_string());
+            }
+        }
+    }
+    valid_files
+
+}
+
+
+/// Get preset data for fade_in, fade_out and threshold values
 fn getpreset(pnum:usize) -> (String, String, String) {
-    let drums = Preset{fade_in: "0.2".to_string(), fade_out: "2".to_string(), thresh_db: "-18".to_string()};
+    let drums = Preset{fade_in: "3".to_string(), fade_out: "10".to_string(), thresh_db: "-48".to_string()};
     let bass = Preset{fade_in: "2".to_string(), fade_out: "2".to_string(), thresh_db: "-18".to_string()};
 
     let mut presetvec = Vec::new();
@@ -370,7 +473,5 @@ fn getpreset(pnum:usize) -> (String, String, String) {
     (fadein.to_string(), fadeout.to_string(), thresh.to_string())
 
     
-    // println!("Bass preset: {}, {}, {}", presetvalues.0, presetvalues.1, presetvalues.2);
-
 }
 
