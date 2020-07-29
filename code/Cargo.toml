@@ -2,6 +2,8 @@
 name = "audiohit"
 version = "0.3.0"
 authors = ["Icaro Ferre"]
+edition = "2018"
+
 
 
 [dependencies]
@@ -10,3 +12,4 @@ decibel = {github = "https://github.com/Digipom/decibel", version="0.1.2"}
 hound = {github = "https://github.com/ruuda/hound/", version="3.4.0"}
 argparse = {github = "http://github.com/tailhook/rust-argparse", version="0.2.1"}
 stopwatch = {github = "https://github.com/ellisonch/rust-stopwatch", version="0.0.7"}
+rand = {github = "https://github.com/rust-random/rand", version="0.7.3"}

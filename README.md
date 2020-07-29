@@ -36,6 +36,7 @@ If more than 64 samples are found within that folder then multiple OT files will
 
 It's also possible to only generate the Octatrack OT file based on the original samples contained inside the specified ```--folder``` by using the ```--ot_file only``` argument. 
 
+The ```--ot_random true``` argument can be used to generate a single chain (concatenated wav + ot file for the Octatrack) using 64 samples randomly picked from the folder specified in the ```--folder``` argument. AudioHit will make sure not to pick the same file more than once.
  
 ## Roadmap / To-Do
 

@@ -8,6 +8,8 @@ use std::fs;
 use decibel::{AmplitudeRatio, DecibelRatio};
 use argparse::{ArgumentParser, Store};
 use stopwatch::{Stopwatch};
+use rand::Rng;
+
 
 extern crate argparse;
 extern crate hound;
@@ -33,7 +35,7 @@ fn stof(s:&str) -> f32 {
 
 fn main() {
 	//Version number
-    let versionnumber = "0.3";
+    let versionnumber = "0.3.1";
 
     // Set default preset
     let  default = getpreset(0);
@@ -48,6 +50,7 @@ fn main() {
 	let mut fade_out_ms = default.1;
     let mut thresh_db = default.2;
     let mut ot_file = "".to_string();
+    let mut ot_random = "".to_string();
 
 	{  // Get variable values from arguments
         let mut ap = ArgumentParser::new();
@@ -70,6 +73,9 @@ fn main() {
         ap.refer(&mut ot_file)
             .add_option(&["--ot_file"], Store,
             "Concatenate samples and generate Octatrack .ot file (true / false)");    
+            ap.refer(&mut ot_random)
+            .add_option(&["--ot_random"], Store,
+            "If true, only 1 sample chain will be generated and 64 samples will be chosen randomly");    
         ap.parse_args_or_exit();
     }
 
@@ -83,16 +89,6 @@ fn main() {
     let mut processed_files:u16 = 0;
 
     let mut OT_Slicer = Slicer::new();
-
-
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 44100,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    
 
     // Single file processing
     if filename != "0" {
@@ -116,11 +112,11 @@ fn main() {
                 let extra_folders = find_sub_folders(&folder_path);
 
                 for folder in extra_folders {
-                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db);
+                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db, ot_random.clone());
                 }
 
                 // Process files found in main folder
-                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db);
+                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db, ot_random.clone());
 
                 
             }
@@ -318,9 +314,14 @@ fn createdir(dir:String) -> String {
     dir
 } 
 
-fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, fade_in_ms: &String, fade_out_ms: &String, thresh_db: &String) -> u16 {
+fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, fade_in_ms: &String, fade_out_ms: &String, thresh_db: &String, ot_random: String) -> u16 {
     let check_file: &Path = &folder_path.as_ref();
     let mut processed_files : u16 = 0;
+    let mut random_files: bool = false;
+
+    if ot_random == "true".to_string() {
+        random_files = true;
+    }
     // Validate directory
     if check_file.is_dir() {
 
@@ -362,7 +363,14 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
         // While 64 should be the theoretical max, we must do 32 at the time so the OT checksum doesn't overflow
 
         let octatrack_max_files = 64;
-        let num_octa_files = ((valid_files.len() as f64 / octatrack_max_files as f64) as f64).ceil() as isize;
+        let mut num_octa_files = ((valid_files.len() as f64 / octatrack_max_files as f64) as f64).ceil() as isize;
+
+        if random_files {
+            num_octa_files = 1;
+        };
+
+        let mut selected_files : Vec<usize> = Vec::new();
+
         println!("Number of Octatrack OT files: {}", num_octa_files);
 
         for i in 0..num_octa_files {
@@ -388,9 +396,29 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
                 OT_Slicer.output_filename.push_str(suffix.as_str());
                 max_files = octatrack_max_files;
             }
+
+            if random_files {
+                max_files = octatrack_max_files;
+            }
     
             for file in 0..max_files {
-                let file_pos = file + (i * max_files as isize) as usize;
+                let mut file_pos : usize = file + (i * max_files as isize) as usize;
+
+                // Set file position to a random file that hasn't been picked yet
+                if random_files {
+                    let mut rng = rand::thread_rng();
+                    let mut found_valid_file: bool = false;
+                    while found_valid_file == false {
+                        let random_file = rng.gen_range(0, valid_files.len()); // Get random position
+                        if selected_files.contains(&random_file) == false { // Check if has been picked before
+                            file_pos = random_file.clone(); // Set file position to the random value
+                            println!("Randomly selected file #{} ({} / 64)", random_file, file + 1);
+                            selected_files.push(random_file); // Add random value to list of already picked values
+                            found_valid_file = true; // Exit loop
+                        }
+                    }
+                }
+
                 if file_pos < valid_files.len() {
                     let file =  &valid_files[file_pos];
                     println!("Processing file {}: {}", file_pos, file.display());
