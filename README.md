@@ -42,6 +42,21 @@ It's also possible to only generate the Octatrack OT file based on the original 
 - Add support for stereo files
 - Add support for 24 and 32-bit audio files
 
+## Compiling instructions for different platforms
+
+While a compiled binary for macOS is available on the [Releases page](https://github.com/icaroferre/AudioHit/releases), compiling binaries for different platforms is quite easy with Rust.
+
+Here's a step by step instruction:
+
+1 - [Download the zip file for this repository](https://github.com/icaroferre/AudioHit/archive/master.zip) and unzip it
+
+2 - [Install Rust on your device](https://www.rust-lang.org/tools/install)
+
+3 - Open the terminal and navegate to the the code folder of the repository: ```cd path/to/AudioHit-master/code/```. If you're unsure about the path just enter ```cd ``` and drag and drop the code folder on the terminal window.
+
+4 - Use the command ```cargo build --release``` to build a binary for your system. The cargo system will take care of downloading all the necessary dependencies and compile everything automatically. The final binary will be available at the target / release folder.
+
+
 ----
 
 Created by Ícaro Ferre  
