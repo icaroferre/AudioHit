@@ -19,13 +19,21 @@ extern crate ot_utils;
 
 use ot_utils::Slicer;
 
-
 struct Preset {
     fade_in: String,
     fade_out: String,
     thresh_db: String,
 }
 
+struct ProcessingPreset {
+    fade_in: f32,
+    fade_out: f32,
+    thresh_db: f32,
+    speed_up: u32,
+    slow_down: u32,
+    reduce_sr: u32,
+    evenly_spaced : bool
+}
 
 
 fn stof(s:&str) -> f32 {
@@ -35,7 +43,7 @@ fn stof(s:&str) -> f32 {
 
 fn main() {
 	//Version number
-    let versionnumber = "0.3.1";
+    let versionnumber = "0.4";
 
     // Set default preset
     let  default = getpreset(0);
@@ -51,6 +59,11 @@ fn main() {
     let mut thresh_db = default.2;
     let mut ot_file = "".to_string();
     let mut ot_random = "".to_string();
+
+    let mut ot_evenspace = "false".to_string();
+    let mut speed_up = "0".to_string();
+    let mut slow_down = "0".to_string();
+    let mut reduce_sr = "1".to_string();
 
 	{  // Get variable values from arguments
         let mut ap = ArgumentParser::new();
@@ -72,10 +85,22 @@ fn main() {
             "Threshold value in decibels (default -36dB).");
         ap.refer(&mut ot_file)
             .add_option(&["--ot_file"], Store,
-            "Concatenate samples and generate Octatrack .ot file (true / false)");    
-            ap.refer(&mut ot_random)
+            "Concatenate samples and generate Octatrack .ot file (true / false).");    
+        ap.refer(&mut ot_random)
             .add_option(&["--ot_random"], Store,
-            "If true, only 1 sample chain will be generated and 64 samples will be chosen randomly");    
+            "If true, only 1 sample chain will be generated and 64 samples will be chosen randomly.");    
+        ap.refer(&mut ot_evenspace)
+            .add_option(&["--ot_evenspace"], Store,
+            "If true, samples will be evenly space in the concatenated wav file.");    
+        ap.refer(&mut speed_up)
+            .add_option(&["--speedup"], Store,
+            "Speeds up audio samples by a x times the original speed.");
+        ap.refer(&mut slow_down)
+            .add_option(&["--slowdown"], Store,
+            "Slows down audio samples by 1/x of the original speed.");
+        ap.refer(&mut reduce_sr)
+            .add_option(&["--reducesr"], Store,
+            "Divides the sample rate of audio samples by x.");
         ap.parse_args_or_exit();
     }
 
@@ -90,11 +115,21 @@ fn main() {
 
     let mut OT_Slicer = Slicer::new();
 
+    let params = ProcessingPreset{
+        fade_in: stof(&fade_in_ms), 
+        fade_out: stof(&fade_out_ms), 
+        thresh_db: stof(&thresh_db),
+        speed_up: stof(&speed_up) as u32,
+        slow_down: stof(&slow_down) as u32,
+        reduce_sr : stof(&reduce_sr) as u32,
+        evenly_spaced : ot_evenspace.parse().unwrap()
+    };
+
     // Single file processing
     if filename != "0" {
         let check_file: &Path = &filename.as_ref();
         if check_file.is_file() {
-            process(&filename, &fade_in_ms, &fade_out_ms, &thresh_db);
+            process(&filename, &params);
         } else {
             println!("ERROR: File not found.");
         }
@@ -112,11 +147,11 @@ fn main() {
                 let extra_folders = find_sub_folders(&folder_path);
 
                 for folder in extra_folders {
-                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db, ot_random.clone());
+                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &params, ot_random.clone());
                 }
 
                 // Process files found in main folder
-                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &fade_in_ms, &fade_out_ms, &thresh_db, ot_random.clone());
+                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &params, ot_random.clone());
 
                 
             }
@@ -134,7 +169,7 @@ fn main() {
     
 }
 
-fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:&String) -> String{
+fn process(filename:&String, params: &ProcessingPreset) -> String{
 
     println!("----- INPUT FILE -----");
     println!("File name: {}", filename);
@@ -174,7 +209,7 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
     };
 
     // Convert dB to linear amplitude
-    let thresh_value: AmplitudeRatio<_> = DecibelRatio(stof(&thresh_db)).into();
+    let thresh_value: AmplitudeRatio<_> = DecibelRatio(params.thresh_db).into();
     let thresh:f32 = max as f32 * thresh_value.amplitude_value() as f32;
     println!("Threshold set to: {} ({})", thresh, thresh_value.amplitude_value());
 
@@ -253,23 +288,21 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
     println!("New file: {}", new_filename);
 
     if new_file.is_file() {
-    	println!("File already exists. Deleting existing file..");
+    	println!("File already exists. Deleting existing file...");
         fs::remove_file(new_file).unwrap();
     };
 
     let mut writer = hound::WavWriter::create(new_file, spec).unwrap();
     let new_file_dur = (file_dur  - start_point) - (file_dur - end_point);
 
-	let fade_in = (stof(&fade_in_ms) as f32 * (file_sr as f32 * 0.001)).floor() as i32;
-    let fade_out = (stof(&fade_out_ms) as f32 * (file_sr as f32 * 0.001)).floor() as i32;
-    println!("Fade durations: {}ms ({} samples) / {}ms ({} samples)", &fade_in_ms, fade_in, &fade_out_ms, fade_out);
+	let fade_in = (params.fade_in * (file_sr as f32 * 0.001)).floor() as i32;
+    let fade_out = (params.fade_out * (file_sr as f32 * 0.001)).floor() as i32;
+    println!("Fade durations: {}ms ({} samples) / {}ms ({} samples)", params.fade_in, fade_in, params.fade_out, fade_out);
     println!("New file duration: {} samples", new_file_dur);
 
-    println!("Filling new file...");
-
-    // let mut final_array : Vec<i16> = Vec::new();
-
     
+
+    let mut new_audio_buffer: Vec<i16> = Vec::new();
 
     // Start writing new file
     for i in 0..new_file_dur as usize  {
@@ -290,14 +323,32 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
                 _ if (i > (new_file_dur as i32 - fade_out) as usize) => (samples[index] as f32 * (1.0 - ((i as f32 - (new_file_dur as f32 - fade_out as f32) as f32) as f32 / fade_out as f32))) as i16,
 	        	// In between
                 _ => samples[index]
-	        };
-            writer.write_sample(amplitude as i16).unwrap();
+            };
+            new_audio_buffer.push(amplitude as i16);
+            
     	}
     	
     }
 
-    println!("---------------------------");
-    println!(" ");
+    if params.reduce_sr > 1 {
+        println!("Reducing sample rate to: {}", reader.spec().sample_rate / params.reduce_sr);
+        new_audio_buffer  = reduce_sr_buffer(new_audio_buffer.clone(), params.reduce_sr);
+    }
+
+    if params.speed_up > 0 {
+        println!("Speeding up buffer to {}x the original speed", params.speed_up);
+        new_audio_buffer  = speed_buffer(new_audio_buffer.clone(), params.speed_up);
+    }
+
+    if params.slow_down > 0 {
+        println!("Slowing down buffer to 1/{} of the original speed", params.slow_down);
+        new_audio_buffer  = slow_buffer(new_audio_buffer.clone(), params.slow_down);
+    }
+
+    println!("Filling file...");
+    for i in new_audio_buffer {
+        writer.write_sample(i).unwrap();
+    }
 
 
     writer.finalize().unwrap();
@@ -308,13 +359,13 @@ fn process(filename:&String, fade_in_ms:&String, fade_out_ms:&String, thresh_db:
 
 fn createdir(dir:String) -> String {
     match fs::create_dir(&dir) {
-        Err(e) => {println!("{:?}", e)},
+        Err(_) => {},
         _ => {}
     };
     dir
 } 
 
-fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, fade_in_ms: &String, fade_out_ms: &String, thresh_db: &String, ot_random: String) -> u16 {
+fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, params: &ProcessingPreset, ot_random: String) -> u16 {
     let check_file: &Path = &folder_path.as_ref();
     let mut processed_files : u16 = 0;
     let mut random_files: bool = false;
@@ -422,16 +473,17 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
                 if file_pos < valid_files.len() {
                     let file =  &valid_files[file_pos];
                     println!("Processing file {}: {}", file_pos, file.display());
+                    let file_path : String = file.to_str().unwrap().to_string();
                     match ot_file.as_str() {
                         "true" => {
-                            let new_file = process(&file.to_str().unwrap().to_string(), fade_in_ms, fade_out_ms, thresh_db);
+                            let new_file = process(&file_path, params);
                             OT_Slicer.add_file(new_file).unwrap();
                         },
                         "only" => {
-                            OT_Slicer.add_file(file.to_str().unwrap().to_string()).unwrap();
+                            OT_Slicer.add_file(file_path).unwrap();
                         }
                         _ => {
-                            let _ = process(&file.to_str().unwrap().to_string(), fade_in_ms, fade_out_ms, thresh_db);
+                            let _ = process(&file_path, params);
                         }
                     }
                 }
@@ -439,7 +491,7 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
 
 
             if ot_file == "true" || ot_file == "only" {
-                OT_Slicer.generate_ot_file().unwrap();
+                OT_Slicer.generate_ot_file(params.evenly_spaced).unwrap();
             }
 
         }
@@ -463,9 +515,8 @@ fn find_sub_folders (folder_path: &String) -> Vec<String> {
         files_found.sort_by_key(|dir| dir.path());
 
         
-
         for file in files_found {
-            if file.path().is_dir() {
+            if file.path().is_dir() && file.path().file_name().unwrap() != "output" {
                 valid_files.push(file.path().to_str().unwrap().to_string());
             }
         }
@@ -503,3 +554,35 @@ fn getpreset(pnum:usize) -> (String, String, String) {
     
 }
 
+
+fn speed_buffer(buf: Vec<i16>, multiplier: u32) -> Vec<i16> {
+    let mut new_buffer : Vec<i16> = Vec::new();
+    for i in 0..buf.len() {
+        if i % multiplier as usize == 0 {
+            new_buffer.push(buf[i]);
+        }
+    }
+    new_buffer
+}
+
+fn reduce_sr_buffer(buf: Vec<i16>, divider: u32) -> Vec<i16> {
+    let mut new_buffer : Vec<i16> = Vec::new();
+    let mut last_value: i16 = 0;
+    for i in 0..buf.len() {
+        if i % divider as usize == 0 {
+            last_value = buf[i];
+        }
+        new_buffer.push(last_value);
+    }
+    new_buffer
+}
+
+fn slow_buffer(buf: Vec<i16>, divider: u32) -> Vec<i16> {
+    let mut new_buffer : Vec<i16> = Vec::new();
+    for i in 0..buf.len() {
+        for _ in 0..divider as usize {
+            new_buffer.push(buf[i]);
+        }
+    }
+    new_buffer
+}
