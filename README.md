@@ -10,7 +10,7 @@ Available modes:
 
 - **trim** (Default) : Detects the start and end points of the main content of the audio sample based on amplitude (whatever is above a certain threshold), trims the audio file to those start / end points, and apply a linear fade in/out.
 - **scale** : Generates 12 copies of the original sample and transposes each of them by +1 semitone.
-- **ref** : Generates a stereo file that has the original sample on the left side and a reference tone (tuned to C3) on the right side.
+- **ref** : Generates a stereo file that has the original sample on the left side and a reference tone (tuned to C3) on the right side. This mode is designed to make it easier to record samples to tape machines and re-tune (using the tape machine's speed control) as the right channel can be used as a pitch reference. 
 
 AudioHit also implements the [ot_utils](https://github.com/icaroferre/ot_utils) library to make it easier to concatenate the generated samples into a single .wav file (sample chain) and automatically generate a .ot slice file for the Elektron Octatrack.
 
@@ -84,10 +84,11 @@ The new files will placed inside an output folder (which will be created if it d
  
 ## Roadmap / To-Do
 
-- Add normalization option to ```trim``` mode.
-- Add support for stereo files.
-- Add support for 24 and 32-bit audio files.
-- Add built-in workflows.
+- Normalization option to ```trim``` mode.
+- Support for stereo files.
+- Support for 24 and 32-bit audio files.
+- Support for creating .WAV and PADINFO.BIN files for the Roland SP-404.
+- Built-in workflows.
 
 ## Compiling instructions for different platforms
 
