@@ -266,6 +266,8 @@ fn process(filename:&String, params: &ProcessingPreset) -> Vec<String>{
         let mut last_start_point : u32 = 0;
         let mut last_valid_point = 0;
         let mut silence_buffer : u32 = 0;
+        let min_length = file_sr / 4;
+        let min_silence = file_sr / 10;
     	for i in 0..file_dur as usize {
     		let samp_pos = i;
 
@@ -305,7 +307,7 @@ fn process(filename:&String, params: &ProcessingPreset) -> Vec<String>{
             	if abs_val as f32 <= thresh && last_start_point > 0 {
                     let end_point = samp_pos as u32;
                     silence_buffer += 1;
-                    if params.split && end_point - last_start_point > file_sr / 4 && silence_buffer > file_sr / 10 {
+                    if params.split && end_point - last_start_point > min_length && silence_buffer > min_silence {
                         let new_region = TrimFile{
                             start_point : last_start_point.clone(),
                             end_point : end_point
