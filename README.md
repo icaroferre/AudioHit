@@ -16,7 +16,7 @@ AudioHit also implements the [ot_utils](https://github.com/icaroferre/ot_utils) 
 
 ## Limitations
 
-- AudioHit can only process 16-bit mono wave files (but it auto-converts files in different formats to save time).
+- AudioHit can only process 44.1kHz 16-bit mono wave files (but it auto-converts files in different formats to save time).
 
 ## How to Install / Dependencies
 
@@ -67,7 +67,6 @@ The new files will placed inside an output folder (which will be created if it d
 
 • Trim files, speed them up 4x, and create a sample chain for the Octatrack (save space):  
 ```audiohit --speedup 4 --ot_file true --folder path/to/folder```
-
 
 • Add reference tone to audio file:  
 ```audiohit --mode ref --file ``` 
