@@ -76,7 +76,7 @@ The new files will placed inside an output folder (which will be created if it d
 ```audiohit --speedup 4 --ot_file true --folder path/to/folder```
 
 • Add reference tone to audio file:  
-```audiohit --mode ref --file ``` 
+```audiohit --mode ref --file path/to/file.wav``` 
 
 • Create Octatrack sample chain by selecting 64 random files from folder (without trimming):  
 ```audiohit --mode pass --ot_file true --ot_random 64 --folder path/to/folder```  
