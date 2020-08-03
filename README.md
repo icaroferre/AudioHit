@@ -4,7 +4,7 @@
 
 ## About 
 
-AudioHit is a CLI utility written in Rust and designed to help batch process audio samples in many different ways to make it easier to use them in software and hardware samplers. 
+AudioHit is a CLI written in Rust and designed to help batch process audio samples in many different ways to make it easier to use them in software and hardware samplers. 
 
 Available modes:
 
