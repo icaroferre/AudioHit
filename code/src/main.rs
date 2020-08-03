@@ -26,9 +26,15 @@ struct Preset {
     thresh_db: String,
 }
 
+struct TrimFile{
+    start_point: u32,
+    end_point: u32
+}
+
 struct ProcessingPreset {
     mode: String,
     autoconvert : bool,
+    split: bool,
     fade_in: f32,
     fade_out: f32,
     thresh_db: f32,
@@ -52,7 +58,7 @@ fn stof(s:&str) -> f32 {
 
 fn main() {
 	//Version number
-    let versionnumber = "0.5";
+    let versionnumber = "0.6";
 
     // Set default preset
     let  default = getpreset(0);
@@ -65,6 +71,8 @@ fn main() {
 	let mut filename = "0".to_string();
     let mut folder_path = "0".to_string();
     let mut autoconvert = "true".to_string();
+
+    let mut split = "false".to_string();
 	let mut fade_in_ms = default.0;
 	let mut fade_out_ms = default.1;
     let mut thresh_db = default.2;
@@ -94,6 +102,9 @@ fn main() {
         ap.refer(&mut folder_path)
             .add_option(&["--folder"], Store,
             "Set folder path for batch processing.");
+        ap.refer(&mut split)
+            .add_option(&["--split"], Store,
+            "Splits processed file into multiple files based on the threshold.");
         ap.refer(&mut fade_in_ms)
             .add_option(&["--fadein"], Store,
             "Fade in Time (default 0.2 ms).");
@@ -149,6 +160,7 @@ fn main() {
     let params = ProcessingPreset{
         mode: op_mode,
         autoconvert : autoconvert.parse().unwrap(),
+        split: split.parse().unwrap(),
         fade_in: stof(&fade_in_ms), 
         fade_out: stof(&fade_out_ms), 
         thresh_db: stof(&thresh_db),
@@ -166,7 +178,7 @@ fn main() {
     if filename != "0" {
         let check_file: &Path = &filename.as_ref();
         if check_file.is_file() {
-            process_single_sample(filename, params, &mut OT_Slicer);
+            processed_files += process_single_sample(filename, params, &mut OT_Slicer);
         } else {
             println!("ERROR: File not found.");
         }
@@ -206,9 +218,9 @@ fn main() {
     
 }
 
-fn process(filename:&String, params: &ProcessingPreset) -> String{
+fn process(filename:&String, params: &ProcessingPreset) -> Vec<String>{
     let path : &Path = filename.as_ref();
-    
+    let output_folder = create_output_folder(filename.clone());
     let mut to_process = path.display().to_string();
     if params.autoconvert {
         to_process = auto_convert(to_process);
@@ -244,12 +256,16 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
     println!("Threshold set to: {} ({})", thresh, thresh_value.amplitude_value());
 
 
-    let mut start_point:u32 = 0;
-    let mut end_point:u32 = 0;
     let samples: Vec<i16> = reader.samples().map(|s| s.unwrap()).collect();
+    let mut regions : Vec<TrimFile> = Vec::new();
+
+    let mut new_files : Vec<String> = Vec::new();
 
     if stereo_file == false {
         // Scan through audio file
+        let mut last_start_point : u32 = 0;
+        let mut last_valid_point = 0;
+        let mut silence_buffer : u32 = 0;
     	for i in 0..file_dur as usize {
     		let samp_pos = i;
 
@@ -277,40 +293,93 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
     			};
 
                 // If start point has not been found and value is > thresh, set startpoint
-    			if abs_val as f32 > thresh && start_point == 0 {
-                	start_point = samp_pos as u32;
+    			if abs_val as f32 > thresh {
+                    if last_start_point == 0 {
+                        last_start_point = samp_pos as u32;
+                    } else {
+                        last_valid_point = samp_pos as u32;
+                    }
             	}
 
                 // Keep updating the end point while sample value > thresh
-            	if abs_val as f32 > thresh{
-                	end_point = samp_pos as u32;
+            	if abs_val as f32 <= thresh && last_start_point > 0 {
+                    let end_point = samp_pos as u32;
+                    silence_buffer += 1;
+                    if params.split && end_point - last_start_point > file_sr / 4 && silence_buffer > file_sr / 10 {
+                        let new_region = TrimFile{
+                            start_point : last_start_point.clone(),
+                            end_point : end_point
+                        };
+                        last_start_point = 0;
+                        println!("New region found: {} / {}", new_region.start_point, new_region.end_point);
+                        regions.push(new_region);
+                        silence_buffer = 0;
+                    }
+                    
             	}
     		}
-    	}
-    	println!("Start Point: {} / End Point: {}",start_point, end_point)
+        }
+        
+        if params.split == false {
+            let new_region = TrimFile{
+                start_point : last_start_point.clone(),
+                end_point : last_valid_point
+            };
+            regions.push(new_region);
+        } else {
+            println!("Regions found: {}", regions.len());
+        };
+
+        regions.reverse();
+        
+        let num_of_regions = if params.split { regions.len()} else {1};
+        for i in 0..num_of_regions {
+            let re = regions.pop().unwrap();
+            let new_file = create_trimmed_file(to_process.clone(), output_folder.clone(), re, params, i as u8);
+            new_files.push(new_file);
+        }
+    	
 
     } else {
     	println!("ERROR: The file is a stereo.");
     }
     println!(" ");
     println!("Creating new file...");
+
+
+    new_files
     
+}
 
- 	// WRITER STAGE
+fn create_trimmed_file(file_name: String, output_folder: String, trim_data: TrimFile, params: &ProcessingPreset, file_num: u8) -> String {
+    // WRITER STAGE
 
+    let file_path : &Path = file_name.as_ref();
     // Set the specs of new audio file
  	let spec = hound::WavSpec {
         channels: 1,
-        sample_rate: file_sr,
-        bits_per_sample: file_bits,
+        sample_rate: 44100,
+        bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
 
+    let mut reader = hound::WavReader::open(file_name.clone()).unwrap();
+    let samples: Vec<i16> = reader.samples().map(|s| s.unwrap()).collect();
+    // Get audio file info
+    let file_sr = reader.spec().sample_rate;
+    let file_dur = reader.len() / reader.spec().channels as u32;
 
-    let output_folder_string = create_output_folder(to_process.clone());
-    let output_folder : &Path = output_folder_string.as_ref();
-    let wav_file_name : String = path.file_name().unwrap().to_str().unwrap().to_string();
-    let mut new_file = Path::join(output_folder, wav_file_name);
+    // let output_folder_string = create_output_folder(file_name.clone());
+    let output_folder_path : &Path = output_folder.as_ref();
+    let mut wav_file_name : String = file_path.file_stem().unwrap().to_str().unwrap().to_string();
+
+    if params.split {
+        wav_file_name = format!("{}_{:2<0}.wav", wav_file_name, file_num + 1);
+    } else {
+        wav_file_name = format!("{}.wav", wav_file_name);
+    }
+
+    let mut new_file = Path::join(output_folder_path, wav_file_name);
    	let new_file_string = new_file.display().to_string();
 
     if new_file.is_file() {
@@ -319,13 +388,10 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
     };
 
     let mut writer = hound::WavWriter::create(&mut new_file, spec).unwrap();
-    let new_file_dur = (file_dur  - start_point) - (file_dur - end_point);
+    let new_file_dur = (file_dur  - trim_data.start_point) - (file_dur - trim_data.end_point);
 
 	let fade_in = (params.fade_in * (file_sr as f32 * 0.001)).floor() as i32;
     let fade_out = (params.fade_out * (file_sr as f32 * 0.001)).floor() as i32;
-    println!("Fade durations: {}ms ({} samples) / {}ms ({} samples)", params.fade_in, fade_in, params.fade_out, fade_out);
-    println!("New file duration: {} samples", new_file_dur);
-
     
 
     let mut new_audio_buffer: Vec<i16> = Vec::new();
@@ -334,7 +400,7 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
     for i in 0..new_file_dur as usize  {
 
         // Add start point to index
-    	let index = i + start_point as usize; 
+    	let index = i + trim_data.start_point as usize; 
     	
         // Check if sample is valid
         let sample_exists = match samples.get(index) {
@@ -371,17 +437,12 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
         new_audio_buffer  = slow_buffer(new_audio_buffer.clone(), params.slow_down);
     }
 
-    println!("Filling file...");
+    println!("Creating new file: {} ({} samples)", new_file_string, new_file_dur);
     for i in new_audio_buffer {
         writer.write_sample(i).unwrap();
     }
 
-    
-
     writer.finalize().unwrap();
-
-    
-    // create_sample_scale(new_filename.clone(), output_folder_path, compatible_spec, 0, params.ot_file);
 
     new_file_string
 
@@ -501,15 +562,20 @@ fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &Process
                 if file_pos < valid_files.len() {
                     let file =  &valid_files[file_pos];
                     println!("Processing file {}: {}", file_pos, file.display());
-                    let mut file_path : String = file.to_str().unwrap().to_string();
+                    let file_path : String = file.to_str().unwrap().to_string();
                     let opmode = params.mode.as_str();
                     match opmode {
                         "trim" => {
-                            file_path = process(&file_path, params);
-                            if octatrack_file {ot_slicer.add_file(file_path).unwrap();};
+                            let new_files = process(&file_path, params);
+                            processed_files += new_files.len() as u16;
+                            for i in new_files {
+                                if octatrack_file {ot_slicer.add_file(i).unwrap();};
+                            }
+                            
                         },
                         "scale" => {
                             let new_files = generate_sample_scale(file_path, params);
+                            processed_files += new_files.len() as u16;
                             for i in new_files {
                                 if octatrack_file {ot_slicer.add_file(i).unwrap();};      
                             }
@@ -519,6 +585,7 @@ fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &Process
                             if params.autoconvert {
                                 to_process = auto_convert(to_process);
                             }
+                            processed_files += 1;
                             add_reference_track(to_process);
                         }
                         "pass" => {
@@ -526,6 +593,7 @@ fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &Process
                             if params.autoconvert {
                                 to_process = auto_convert(to_process);
                             }
+                            processed_files += 1;
                             if octatrack_file {ot_slicer.add_file(to_process).unwrap();};
 
                         },
@@ -540,7 +608,7 @@ fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &Process
             };
 
         }
-        processed_files = valid_files.len() as u16;
+        // processed_files = valid_files.len() as u16;
     }
     processed_files
 }
@@ -569,13 +637,14 @@ fn auto_convert(file_path : String)  -> String {
     final_filepath
 }
 
-fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer: &mut Slicer) {
+fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer: &mut Slicer) -> u16 {
     let opmode = params.mode.as_str();
     let path : &Path = file_path.as_ref();
 
     // Create output folder
     let output_folder = create_output_folder(file_path.clone());
     
+    let mut processed_files : u16 = 0;
 
     // Set OT file to the same name as the folder
     ot_slicer.clear();
@@ -584,10 +653,15 @@ fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer
 
     match opmode {
         "trim" => {
-            process(&file_path, &params);
+            let new_files = process(&file_path, &params);
+            processed_files += new_files.len() as u16;
+            for i in new_files {
+                if params.ot_file {ot_slicer.add_file(i).unwrap();};
+            }
         },
         "scale" => {
             let new_files = generate_sample_scale(file_path, &params);
+            processed_files += new_files.len() as u16;
             ot_slicer.output_filename.push_str("_scale");
             for i in new_files {
                 if params.ot_file {ot_slicer.add_file(i).unwrap();};      
@@ -595,6 +669,7 @@ fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer
         },
         "ref" => {
             let mut to_process = file_path;
+            processed_files += 1;
             if params.autoconvert {
                 to_process = auto_convert(to_process);
             }
@@ -605,6 +680,8 @@ fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer
     if params.ot_file {
         ot_slicer.generate_ot_file(params.evenly_spaced).unwrap();
     }
+    processed_files
+
 }
 
 /// Look for folders inside a folder and returns a vector of paths as strings

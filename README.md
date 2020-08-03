@@ -8,7 +8,7 @@ AudioHit is a CLI written in Rust and designed to help batch process audio sampl
 
 Available modes:
 
-- **trim** (Default) : Detects the start and end points of the main content of the audio sample based on amplitude (whatever is above a certain threshold), trims the audio file to those start / end points, and apply a linear fade in/out.
+- **trim** (Default) : Detects the start and end points of the main content of the audio sample based on amplitude (whatever is above a certain threshold), trims the audio file to those start / end points, and apply a linear fade in/out. This mode can perform a simple silent strip to split recording of multiple one-shots into separate files (with fades). 
 - **scale** : Generates 12 copies of the original sample and transposes each of them by +1 semitone.
 - **ref** : Generates a stereo file that has the original sample on the left side and a reference tone (tuned to C3) on the right side. This mode is designed to make it easier to record samples to tape machines and re-tune (using the tape machine's speed control) as the right channel can be used as a pitch reference. 
 
@@ -46,6 +46,7 @@ The new files will placed inside an output folder (which will be created if it d
 
 **Arguments for trim mode:**
 
+- ```--split true``` : Splits processed file into multiple files based on the threshold (minimum length of 250ms per file). 
 - ```--fadein``` : Sets the length of the fade in in **ms**.
 - ```--fadeout``` : Sets the length of the fade out in **ms**.
 - ```--thresh``` : Sets the threshold for the peak detector in **decibels** (default: -48).
@@ -67,12 +68,15 @@ The new files will placed inside an output folder (which will be created if it d
 ## Example workflows
 
 • Auto-convert, trim files and create a sample chain for the Octatrack:  
-```audiohit --ot_file true --folder path/to/folder```  
+```audiohit --ot_file true --folder path/to/folder``` 
+
+• Split recording of multiple one-shots, trim and fade files, and create a sample chain for the Octatrack:  
+```audiohit --split true --ot_file true --file path/to/file.wav``` 
 
 • Create 48 semitone (4 octaves) variations of a sample starting 2 octaves below:  
 ```audiohit --mode scale --pitch_range 48 --pitch_offset 24 --file path/to/file.wav```  
 
-• Trim files, speed them up 4x, and create a sample chain for the Octatrack (save space):  
+• Trim files, speed them up 4x, and create a sample chain for the Octatrack (useful for saving RAM on hardware samplers):  
 ```audiohit --speedup 4 --ot_file true --folder path/to/folder```
 
 • Add reference tone to audio file:  
