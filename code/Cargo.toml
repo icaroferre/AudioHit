@@ -7,7 +7,7 @@ edition = "2018"
 
 
 [dependencies]
-ot_utils = {github = "https://github.com/icaroferre/ot_utils", version = "0.1.3" }
+ot_utils = {github = "https://github.com/icaroferre/ot_utils", version = "0.1.4" }
 decibel = {github = "https://github.com/Digipom/decibel", version="0.1.2"}
 hound = {github = "https://github.com/ruuda/hound/", version="3.4.0"}
 argparse = {github = "http://github.com/tailhook/rust-argparse", version="0.2.1"}

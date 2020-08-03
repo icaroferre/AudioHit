@@ -9,6 +9,7 @@ use decibel::{AmplitudeRatio, DecibelRatio};
 use argparse::{ArgumentParser, Store};
 use stopwatch::{Stopwatch};
 use rand::Rng;
+use std::process::Command;
 
 
 extern crate argparse;
@@ -26,14 +27,22 @@ struct Preset {
 }
 
 struct ProcessingPreset {
+    mode: String,
+    autoconvert : bool,
     fade_in: f32,
     fade_out: f32,
     thresh_db: f32,
     speed_up: u32,
     slow_down: u32,
     reduce_sr: u32,
-    evenly_spaced : bool
+    evenly_spaced : bool,
+    ot_file : bool,
+    ot_random : bool,
+    pitch_offset : isize,
+    pitch_range : isize
 }
+
+
 
 
 fn stof(s:&str) -> f32 {
@@ -43,7 +52,7 @@ fn stof(s:&str) -> f32 {
 
 fn main() {
 	//Version number
-    let versionnumber = "0.4";
+    let versionnumber = "0.5";
 
     // Set default preset
     let  default = getpreset(0);
@@ -52,22 +61,33 @@ fn main() {
     let sw = Stopwatch::start_new();
 
     // Initialize variables
+    let mut op_mode = "trim".to_string();
 	let mut filename = "0".to_string();
     let mut folder_path = "0".to_string();
+    let mut autoconvert = "true".to_string();
 	let mut fade_in_ms = default.0;
 	let mut fade_out_ms = default.1;
     let mut thresh_db = default.2;
-    let mut ot_file = "".to_string();
-    let mut ot_random = "".to_string();
 
-    let mut ot_evenspace = "false".to_string();
     let mut speed_up = "0".to_string();
     let mut slow_down = "0".to_string();
     let mut reduce_sr = "1".to_string();
 
+
+    let mut ot_file = "false".to_string();
+    let mut ot_random = "false".to_string();
+    let mut ot_evenspace = "false".to_string();
+
+    // SCALE MODE ARGUMENTS
+    let mut pitch_offset = "0".to_string();
+    let mut pitch_range = "12".to_string();
+
 	{  // Get variable values from arguments
         let mut ap = ArgumentParser::new();
         ap.set_description("Greet somebody.");
+        ap.refer(&mut op_mode)
+            .add_option(&["--mode"], Store,
+            "Set the operation mode (trim / ref / scale).");
         ap.refer(&mut filename)
             .add_option(&["--file"], Store,
             "Filename.");
@@ -80,6 +100,9 @@ fn main() {
         ap.refer(&mut fade_out_ms)
             .add_option(&["--fadeout"], Store,
             "Fade Out Time (default 2 ms).");
+        ap.refer(&mut autoconvert)
+            .add_option(&["--autoconvert"], Store,
+            "Enables or disables auto-convertion via SoX.");
         ap.refer(&mut thresh_db)
             .add_option(&["--thresh"], Store,
             "Threshold value in decibels (default -36dB).");
@@ -101,6 +124,13 @@ fn main() {
         ap.refer(&mut reduce_sr)
             .add_option(&["--reducesr"], Store,
             "Divides the sample rate of audio samples by x.");
+        ap.refer(&mut pitch_offset)
+            .add_option(&["--pitch_offset"], Store,
+            "Set the pitch offset (root note) for the scale mode. C = 0 Db = 1 D = 2 ...");
+        ap.refer(&mut pitch_range)
+            .add_option(&["--pitch_range"], Store,
+            "Set the pitch range for the scale mode.");
+                
         ap.parse_args_or_exit();
     }
 
@@ -115,21 +145,28 @@ fn main() {
 
     let mut OT_Slicer = Slicer::new();
 
+    // Fill processing preset using arguments
     let params = ProcessingPreset{
+        mode: op_mode,
+        autoconvert : autoconvert.parse().unwrap(),
         fade_in: stof(&fade_in_ms), 
         fade_out: stof(&fade_out_ms), 
         thresh_db: stof(&thresh_db),
         speed_up: stof(&speed_up) as u32,
         slow_down: stof(&slow_down) as u32,
         reduce_sr : stof(&reduce_sr) as u32,
-        evenly_spaced : ot_evenspace.parse().unwrap()
+        evenly_spaced : ot_evenspace.parse().unwrap(),
+        ot_file : ot_file.parse().unwrap(),
+        ot_random : ot_random.parse().unwrap(),
+        pitch_offset : pitch_offset.parse().unwrap(),
+        pitch_range : pitch_range.parse().unwrap()
     };
 
     // Single file processing
     if filename != "0" {
         let check_file: &Path = &filename.as_ref();
         if check_file.is_file() {
-            process(&filename, &params);
+            process_single_sample(filename, params, &mut OT_Slicer);
         } else {
             println!("ERROR: File not found.");
         }
@@ -147,11 +184,11 @@ fn main() {
                 let extra_folders = find_sub_folders(&folder_path);
 
                 for folder in extra_folders {
-                    processed_files += process_folder(&folder, &mut OT_Slicer, &ot_file, &params, ot_random.clone());
+                    processed_files += process_folder(&folder, &mut OT_Slicer, &params);
                 }
 
                 // Process files found in main folder
-                processed_files += process_folder(&folder_path, &mut OT_Slicer, &ot_file, &params, ot_random.clone());
+                processed_files += process_folder(&folder_path, &mut OT_Slicer, &params );
 
                 
             }
@@ -170,14 +207,14 @@ fn main() {
 }
 
 fn process(filename:&String, params: &ProcessingPreset) -> String{
-
-    println!("----- INPUT FILE -----");
-    println!("File name: {}", filename);
-	let path: &Path = &filename.as_ref();
-
-    // Read audio file
-    let mut reader = hound::WavReader::open(path).unwrap();
-
+    let path : &Path = filename.as_ref();
+    
+    let mut to_process = path.display().to_string();
+    if params.autoconvert {
+        to_process = auto_convert(to_process);
+    }
+    let mut reader = hound::WavReader::open(to_process.clone()).unwrap();
+    
     // Get audio file info
     let file_sr = reader.spec().sample_rate;
     let file_dur = reader.len() / reader.spec().channels as u32;
@@ -191,22 +228,15 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
     	_ => true
     };
 
-	
-    println!("Sample Rate: {}", file_sr);
-    println!("File duration: {} samples", file_dur);
-    println!("Channels: {}", file_chs);
-    println!("Bit-rate: {}", file_bits);
-
     
 
-    // println!(" ");
-
-    assert_eq!(file_bits, 16, "INVALID FILE. Convert audio file to 16 bits and try again.");
+    // assert_eq!(file_bits, 16, "INVALID FILE. Convert audio file to 16 bits and try again.");
 
     let max = match file_bits {
     	16 => <u16>::max_value(),
     	_ => 0
     };
+
 
     // Convert dB to linear amplitude
     let thresh_value: AmplitudeRatio<_> = DecibelRatio(params.thresh_db).into();
@@ -276,23 +306,19 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
         sample_format: hound::SampleFormat::Int,
     };
 
-    // Get parent folder of audio file
-    let parentpath = &path.parent().unwrap().to_str().unwrap().to_string().to_owned();
-    let mut new_filename  = parentpath.to_owned();
 
-    // Create output folder
-    new_filename.push_str("/output/");
-    new_filename = createdir(new_filename);
-   	new_filename.push_str(&path.file_name().unwrap().to_str().unwrap());
-    let new_file: &Path = new_filename.as_ref();
-    println!("New file: {}", new_filename);
+    let output_folder_string = create_output_folder(to_process.clone());
+    let output_folder : &Path = output_folder_string.as_ref();
+    let wav_file_name : String = path.file_name().unwrap().to_str().unwrap().to_string();
+    let mut new_file = Path::join(output_folder, wav_file_name);
+   	let new_file_string = new_file.display().to_string();
 
     if new_file.is_file() {
     	println!("File already exists. Deleting existing file...");
-        fs::remove_file(new_file).unwrap();
+        fs::remove_file(&mut new_file).unwrap();
     };
 
-    let mut writer = hound::WavWriter::create(new_file, spec).unwrap();
+    let mut writer = hound::WavWriter::create(&mut new_file, spec).unwrap();
     let new_file_dur = (file_dur  - start_point) - (file_dur - end_point);
 
 	let fade_in = (params.fade_in * (file_sr as f32 * 0.001)).floor() as i32;
@@ -350,10 +376,14 @@ fn process(filename:&String, params: &ProcessingPreset) -> String{
         writer.write_sample(i).unwrap();
     }
 
+    
 
     writer.finalize().unwrap();
 
-    new_filename
+    
+    // create_sample_scale(new_filename.clone(), output_folder_path, compatible_spec, 0, params.ot_file);
+
+    new_file_string
 
 }
 
@@ -365,14 +395,12 @@ fn createdir(dir:String) -> String {
     dir
 } 
 
-fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String, params: &ProcessingPreset, ot_random: String) -> u16 {
+fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &ProcessingPreset) -> u16 {
     let check_file: &Path = &folder_path.as_ref();
     let mut processed_files : u16 = 0;
-    let mut random_files: bool = false;
+    let  octatrack_file = params.ot_file.clone();
+    let random_files = params.ot_random;
 
-    if ot_random == "true".to_string() {
-        random_files = true;
-    }
     // Validate directory
     if check_file.is_dir() {
 
@@ -427,24 +455,24 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
         for i in 0..num_octa_files {
   
             // Reset the slice vector
-            OT_Slicer.clear();
+            ot_slicer.clear();
 
             // Create output folder
             let mut output_folder = folder_path.clone();
             output_folder.push_str("/output/");
             output_folder = createdir(output_folder);
-            OT_Slicer.output_folder = output_folder;
+            ot_slicer.output_folder = output_folder;
             
 
             // Set OT file to the same name as the folder
-            OT_Slicer.output_filename = check_file.file_name().unwrap().to_str().unwrap().to_string();
+            ot_slicer.output_filename = check_file.file_name().unwrap().to_str().unwrap().to_string();
 
             // Add suffix to OT file if num_octa_files is greater than 0
             let mut max_files : usize = valid_files.len();
 
             if num_octa_files > 1 {
                 let suffix = format!("_{}", i + 1);
-                OT_Slicer.output_filename.push_str(suffix.as_str());
+                ot_slicer.output_filename.push_str(suffix.as_str());
                 max_files = octatrack_max_files;
             }
 
@@ -473,34 +501,111 @@ fn process_folder(folder_path:&String,  OT_Slicer: &mut Slicer, ot_file: &String
                 if file_pos < valid_files.len() {
                     let file =  &valid_files[file_pos];
                     println!("Processing file {}: {}", file_pos, file.display());
-                    let file_path : String = file.to_str().unwrap().to_string();
-                    match ot_file.as_str() {
-                        "true" => {
-                            let new_file = process(&file_path, params);
-                            OT_Slicer.add_file(new_file).unwrap();
+                    let mut file_path : String = file.to_str().unwrap().to_string();
+                    let opmode = params.mode.as_str();
+                    match opmode {
+                        "trim" => {
+                            file_path = process(&file_path, params);
+                            if octatrack_file {ot_slicer.add_file(file_path).unwrap();};
                         },
-                        "only" => {
-                            OT_Slicer.add_file(file_path).unwrap();
+                        "scale" => {
+                            let new_files = generate_sample_scale(file_path, params);
+                            for i in new_files {
+                                if octatrack_file {ot_slicer.add_file(i).unwrap();};      
+                            }
+                        },
+                        "ref" => {
+                            let mut to_process = file_path;
+                            if params.autoconvert {
+                                to_process = auto_convert(to_process);
+                            }
+                            add_reference_track(to_process);
                         }
-                        _ => {
-                            let _ = process(&file_path, params);
-                        }
+                        "pass" => {
+                            let mut to_process = file_path;
+                            if params.autoconvert {
+                                to_process = auto_convert(to_process);
+                            }
+                            if octatrack_file {ot_slicer.add_file(to_process).unwrap();};
+
+                        },
+                        &_ => {}
                     }
+                    
                 }
-            }
 
-
-            if ot_file == "true" || ot_file == "only" {
-                OT_Slicer.generate_ot_file(params.evenly_spaced).unwrap();
             }
+            if octatrack_file {
+                ot_slicer.generate_ot_file(params.evenly_spaced).unwrap();
+            };
 
         }
-
         processed_files = valid_files.len() as u16;
     }
     processed_files
 }
 
+
+fn auto_convert(file_path : String)  -> String {
+    let compatible_spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+
+    let path : &Path = file_path.as_ref();
+    let reader = hound::WavReader::open(path).unwrap();
+    let output_folder = create_output_folder(file_path.clone());
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let new_filename = format!("{}/{}", output_folder, file_name);
+    let mut final_filepath = file_path.clone();
+
+    if reader.spec() != compatible_spec {
+        assert_eq!(convert_to_format(file_path.clone(), new_filename.clone(), compatible_spec).success(), true, "Failed to convert file (is SoX installed?).");
+        final_filepath = new_filename;
+    }
+    final_filepath
+}
+
+fn process_single_sample (file_path: String, params: ProcessingPreset, ot_slicer: &mut Slicer) {
+    let opmode = params.mode.as_str();
+    let path : &Path = file_path.as_ref();
+
+    // Create output folder
+    let output_folder = create_output_folder(file_path.clone());
+    
+
+    // Set OT file to the same name as the folder
+    ot_slicer.clear();
+    ot_slicer.output_folder = output_folder;
+    ot_slicer.output_filename = path.file_stem().unwrap().to_str().unwrap().to_string();
+
+    match opmode {
+        "trim" => {
+            process(&file_path, &params);
+        },
+        "scale" => {
+            let new_files = generate_sample_scale(file_path, &params);
+            ot_slicer.output_filename.push_str("_scale");
+            for i in new_files {
+                if params.ot_file {ot_slicer.add_file(i).unwrap();};      
+            }
+        },
+        "ref" => {
+            let mut to_process = file_path;
+            if params.autoconvert {
+                to_process = auto_convert(to_process);
+            }
+            add_reference_track(to_process);
+        }
+        &_ => {}
+    };
+    if params.ot_file {
+        ot_slicer.generate_ot_file(params.evenly_spaced).unwrap();
+    }
+}
 
 /// Look for folders inside a folder and returns a vector of paths as strings
 fn find_sub_folders (folder_path: &String) -> Vec<String> {
@@ -554,6 +659,15 @@ fn getpreset(pnum:usize) -> (String, String, String) {
     
 }
 
+fn create_output_folder (filepath: String) -> String {
+    let path : &Path = filepath.as_ref();
+    let parentpath = &path.parent().unwrap().to_str().unwrap().to_string().to_owned();
+    let mut new_filename  = parentpath.to_owned();
+    new_filename.push_str("/output/");
+    let output_folder = createdir(new_filename.clone());
+    output_folder
+}
+
 
 fn speed_buffer(buf: Vec<i16>, multiplier: u32) -> Vec<i16> {
     let mut new_buffer : Vec<i16> = Vec::new();
@@ -585,4 +699,66 @@ fn slow_buffer(buf: Vec<i16>, divider: u32) -> Vec<i16> {
         }
     }
     new_buffer
+}
+
+fn convert_to_format(filepath: String, new_filepath: String, specs : hound::WavSpec) -> std::process::ExitStatus {
+    println!("Converting file {} to compatible format...", filepath);
+    Command::new("sox").args(&[filepath.as_str(), "-b", specs.bits_per_sample.to_string().as_str(), "-c", specs.channels.to_string().as_str(), new_filepath.as_str(), "rate", "-v", "-I", "-b", "90", "-a", specs.sample_rate.to_string().as_str()]).status().expect("Audio convertion failed")
+}
+
+fn generate_sample_scale(filepath: String, params : &ProcessingPreset) -> Vec<String> {
+    // let mut result : std::process::ExitStatus;
+    let path : &Path = filepath.as_ref();
+    let  filename  = path.file_stem().unwrap().to_str().unwrap();
+    let parentpath = &path.parent().unwrap().to_str().unwrap().to_string().to_owned();
+    let mut new_filename  = parentpath.to_owned();
+    new_filename.push_str("/output/");
+    let output_folder = createdir(new_filename.clone());
+
+    
+    let final_folder_path = format!("{}{}_scale",output_folder, filename);
+    let final_folder = createdir(final_folder_path);
+
+    let mut new_files : Vec<String> = Vec::new();
+  
+
+    println!("Creating chromatic scale folder for {}", filepath);
+    for i in 0..params.pitch_range {
+        let new_pitch = (i as isize - params.pitch_offset) * 100 as isize;
+        let new_filepath = format!("{}/{}_{:0>2}.wav", final_folder, filename, i + 1);
+        println!("{} > {}: {}", filepath, new_filepath, new_pitch);
+        new_files.push(new_filepath.clone());
+        let _result = Command::new("sox").args(&[
+            filepath.as_str(),
+            "-b", "16", "-c", "1",
+            new_filepath.as_str(), 
+            "pitch", 
+            new_pitch.to_string().as_str(),
+            "rate", "-v", "-I", "-b", "90", "-a", "44100"
+        
+        ]).status().expect("Audio convertion failed");
+    }
+    
+    new_files
+}
+
+fn add_reference_track(filepath: String) {
+    println!("Adding pitch track to : {}", filepath);
+    let path : &Path = filepath.as_ref();
+    let filename  = path.file_stem().unwrap().to_str().unwrap();
+    let parentpath = &path.parent().unwrap().to_str().unwrap().to_string().to_owned();
+    let mut output_folder  = parentpath.to_owned();
+    output_folder.push_str("/output/");
+    let new_filepath = format!("{}{}_ref.wav", output_folder, filename);
+    let sine_file = format!("{}{}_sine.wav", output_folder, filename);
+
+    let reader = hound::WavReader::open(path).unwrap();
+    let specs = reader.spec();
+    let len : f32 = reader.duration() as f32 / specs.sample_rate as f32;
+    println!("File length: {}", len);
+
+
+    let _result = Command::new("sox").args(&["-n", "-r", specs.sample_rate.to_string().as_str(), "-b", specs.bits_per_sample.to_string().as_str(), sine_file.as_str(), "synth", len.to_string().as_str(), "sine", "130.81"]).status().expect("Audio convertion failed");
+    let _result = Command::new("sox").args(&[filepath.as_str(), sine_file.as_str(), new_filepath.as_str(), "-MS"]).status().expect("Audio convertion failed");
+    fs::remove_file(sine_file).unwrap();
 }
