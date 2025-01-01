@@ -638,7 +638,7 @@ fn process_folder(folder_path:&String,  ot_slicer: &mut Slicer, params: &Process
                     let mut rng = rand::thread_rng();
                     let mut found_valid_file: bool = false;
                     while found_valid_file == false {
-                        let random_file = rng.gen_range(0, valid_files.len()); // Get random position
+                        let random_file = rng.gen_range(0..valid_files.len()); // Get random position
                         if selected_files.contains(&random_file) == false { // Check if has been picked before
                             file_pos = random_file.clone(); // Set file position to the random value
                             println!("Randomly selected file #{} ({} / 64)", random_file, file + 1);
